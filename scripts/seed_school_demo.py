@@ -10,9 +10,20 @@ Erstellt realistische Test-Daten für:
 
 import sqlite3
 import json
+import os
 from datetime import datetime, timedelta
 
-DB_PATH = 'data/repair.db'
+# Pfad zur Datenbank im Haupt-Repo
+# Wird relativ zum Script-Verzeichnis berechnet
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPAIR_CAFE_DIR = os.path.join(SCRIPT_DIR, '..', '..')
+DB_PATH = os.path.join(REPAIR_CAFE_DIR, 'repair-cafe', 'data', 'repair.db')
+
+# Alternativ: Absoluter Pfad wenn als Submodule installiert
+if not os.path.exists(DB_PATH):
+    DB_PATH = os.path.expanduser('~/repair-cafe/data/repair.db')
+
+print(f"📊 Verwende Datenbank: {DB_PATH}")
 
 def create_demo_data():
     """Erstellt Demo-Daten für Schul-Workshop"""
@@ -47,8 +58,8 @@ def create_demo_data():
     devices = []
     for i, group in enumerate(groups, 1):
         cur = conn.execute(
-            "INSERT INTO devices (name, schutzklasse, description) VALUES (?, ?, ?)",
-            (group['device'], 'II', f'Übungsgerät für Workshop am {workshop_date}')
+            "INSERT INTO devices (name, schutzklasse) VALUES (?, ?)",
+            (group['device'], 'II')
         )
         device_id = cur.lastrowid
         devices.append(device_id)
@@ -66,27 +77,18 @@ def create_demo_data():
         main_student = group['students'][0]
         student_class = group['class']
         
-        # Ticket erstellen
+        # Ticket erstellen (ohne school_data Feld - wird im Journal gespeichert)
         cur = conn.execute("""
             INSERT INTO tickets 
-            (device_id, fault_description, status, assignee, created_at, finished_at, school_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (device_id, fault_description, status, assignee, created_at, finished_at)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             device_id,
             "Leuchtet nicht",
             'erfolgreich',  # Alle erfolgreich für gute Statistik!
-            main_student,
+            f"{main_student} ({student_class})",  # Schüler + Klasse im assignee Feld
             created_at.isoformat(),
             finished_at.isoformat(),
-            json.dumps({
-                'student_name': main_student,
-                'student_class': student_class,
-                'school_name': school_name,
-                'teacher_name': teacher,
-                'workshop_date': workshop_date,
-                'has_permission': True,
-                'permission_signed_at': '2026-09-20T10:00:00',
-            })
         ))
         ticket_id = cur.lastrowid
         
@@ -103,9 +105,9 @@ def create_demo_data():
             f'data/signatures/ticket_{ticket_id}.png'
         ))
         
-        # Reparatur-Tagebuch Einträge
+        # Reparatur-Tagebuch Einträge (inkl. Schul-Daten im ersten Eintrag)
         journal_entries = [
-            (ticket_id, 'diagnose', f'Gerät geöffnet, {45*(i+1)} Min gearbeitet', created_at.isoformat()),
+            (ticket_id, 'diagnose', f"Workshop {school_name} am {workshop_date} | Schüler: {main_student}, Klasse: {student_class} | Lehrer: {teacher}", created_at.isoformat()),
             (ticket_id, 'schritt', 'Kabel gefunden das ab war', (created_at + timedelta(minutes=15)).isoformat()),
             (ticket_id, 'schritt', 'Kabel angelötet', (created_at + timedelta(minutes=30)).isoformat()),
             (ticket_id, 'ergebnis', 'Funktionsprüfung BESTANDEN ✓', finished_at.isoformat()),
